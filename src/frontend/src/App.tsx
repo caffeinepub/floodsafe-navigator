@@ -15,6 +15,7 @@ import {
   Ruler,
   Search,
   Shield,
+  Wind,
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -59,128 +60,123 @@ interface SelectedLocation {
   coords: [number, number];
 }
 
+interface WeatherData {
+  temp: number;
+  windspeed: number;
+  weathercode: number;
+  humidity: number;
+}
+
 // --- Data ---
-const NYC_LOCATIONS: Location[] = [
-  { id: "times-square", name: "Times Square", coords: [40.758, -73.9855] },
-  {
-    id: "brooklyn-bridge",
-    name: "Brooklyn Bridge",
-    coords: [40.7061, -73.9969],
-  },
-  { id: "central-park", name: "Central Park", coords: [40.7851, -73.9683] },
-  { id: "jfk-airport", name: "JFK Airport", coords: [40.6413, -73.7781] },
-  { id: "flushing", name: "Flushing, Queens", coords: [40.7675, -73.833] },
-  {
-    id: "staten-island-ferry",
-    name: "Staten Island Ferry",
-    coords: [40.6437, -74.0735],
-  },
+const INDIA_LOCATIONS: Location[] = [
+  { id: "delhi", name: "New Delhi", coords: [28.6139, 77.209] },
+  { id: "mumbai", name: "Mumbai", coords: [19.076, 72.8777] },
+  { id: "bangalore", name: "Bengaluru", coords: [12.9716, 77.5946] },
+  { id: "chennai", name: "Chennai", coords: [13.0827, 80.2707] },
+  { id: "kolkata", name: "Kolkata", coords: [22.5726, 88.3639] },
+  { id: "hyderabad", name: "Hyderabad", coords: [17.385, 78.4867] },
 ];
 
 const ROAD_SEGMENTS: RoadSegment[] = [
   {
     id: "seg-1",
-    name: "FDR Drive (Lower)",
+    name: "NH-48 Delhi-Gurugram",
     coords: [
-      [40.7061, -73.9969],
-      [40.7128, -73.9846],
-      [40.722, -73.9755],
+      [28.635, 77.22],
+      [28.6, 77.13],
+      [28.475, 77.02],
     ],
     level: "high",
   },
   {
     id: "seg-2",
-    name: "Atlantic Ave",
+    name: "Ring Road Delhi",
     coords: [
-      [40.69, -73.98],
-      [40.685, -73.965],
-      [40.68, -73.95],
+      [28.644, 77.185],
+      [28.66, 77.23],
+      [28.678, 77.26],
     ],
-    level: "high",
+    level: "moderate",
   },
   {
     id: "seg-3",
-    name: "Belt Parkway",
+    name: "Yamuna Expressway",
     coords: [
-      [40.6413, -73.7781],
-      [40.635, -73.82],
-      [40.63, -73.87],
-    ],
-    level: "moderate",
-  },
-  {
-    id: "seg-4",
-    name: "Queens Blvd",
-    coords: [
-      [40.7675, -73.833],
-      [40.755, -73.87],
-      [40.744, -73.905],
-    ],
-    level: "moderate",
-  },
-  {
-    id: "seg-5",
-    name: "Broadway (Midtown)",
-    coords: [
-      [40.758, -73.9855],
-      [40.765, -73.981],
-      [40.772, -73.9775],
-      [40.7851, -73.9683],
+      [28.48, 77.49],
+      [27.98, 77.58],
+      [27.49, 77.67],
     ],
     level: "safe",
   },
   {
-    id: "seg-6",
-    name: "5th Avenue",
+    id: "seg-4",
+    name: "Marine Drive Mumbai",
     coords: [
-      [40.758, -73.9855],
-      [40.764, -73.978],
-      [40.771, -73.973],
-      [40.778, -73.9645],
+      [18.943, 72.823],
+      [18.966, 72.816],
+      [18.984, 72.811],
+    ],
+    level: "high",
+  },
+  {
+    id: "seg-5",
+    name: "Western Express Highway",
+    coords: [
+      [19.07, 72.835],
+      [19.15, 72.844],
+      [19.22, 72.858],
+    ],
+    level: "moderate",
+  },
+  {
+    id: "seg-6",
+    name: "NH-44 Bangalore-Chennai",
+    coords: [
+      [12.97, 77.59],
+      [12.6, 78.2],
+      [13.08, 80.27],
     ],
     level: "safe",
   },
   {
     id: "seg-7",
-    name: "West Side Highway",
+    name: "Kolkata Circular Road",
     coords: [
-      [40.7061, -73.9969],
-      [40.72, -74.005],
-      [40.74, -74.01],
-      [40.758, -74.002],
-    ],
-    level: "moderate",
-  },
-  {
-    id: "seg-8",
-    name: "Verrazzano Narrows",
-    coords: [
-      [40.606, -74.044],
-      [40.617, -74.055],
-      [40.628, -74.068],
-    ],
-    level: "safe",
-  },
-  {
-    id: "seg-9",
-    name: "Shore Road (Brooklyn)",
-    coords: [
-      [40.62, -74.03],
-      [40.63, -74.01],
-      [40.6437, -74.0735],
+      [22.57, 88.36],
+      [22.59, 88.38],
+      [22.61, 88.4],
     ],
     level: "high",
   },
   {
-    id: "seg-10",
-    name: "Northern Blvd",
+    id: "seg-8",
+    name: "Anna Salai Chennai",
     coords: [
-      [40.7675, -73.833],
-      [40.768, -73.87],
-      [40.77, -73.9],
-      [40.772, -73.93],
+      [13.06, 80.27],
+      [13.075, 80.258],
+      [13.085, 80.248],
+    ],
+    level: "moderate",
+  },
+  {
+    id: "seg-9",
+    name: "Linking Road Mumbai",
+    coords: [
+      [19.068, 72.836],
+      [19.075, 72.829],
+      [19.082, 72.822],
     ],
     level: "safe",
+  },
+  {
+    id: "seg-10",
+    name: "NH-8 Jaipur Highway",
+    coords: [
+      [28.6, 77.1],
+      [27.5, 76.6],
+      [26.91, 75.79],
+    ],
+    level: "moderate",
   },
 ];
 
@@ -197,15 +193,9 @@ const FLOOD_WEIGHTS: Record<FloodLevel, number> = {
 };
 
 const HIGH_RISK_ZONES: { coords: [number, number]; label: string }[] = [
-  {
-    coords: [40.7061, -73.9969],
-    label: "Brooklyn Bridge Area — Severe Flooding",
-  },
-  { coords: [40.69, -73.98], label: "Atlantic Ave — Road Submerged" },
-  {
-    coords: [40.6437, -74.0735],
-    label: "Staten Island Ferry Terminal — High Risk",
-  },
+  { coords: [28.635, 77.22], label: "NH-48 Delhi-Gurugram — Severe Flooding" },
+  { coords: [18.943, 72.823], label: "Marine Drive Mumbai — Road Submerged" },
+  { coords: [22.57, 88.36], label: "Kolkata Circular Road — High Risk" },
 ];
 
 const FLOW_STEPS = [
@@ -218,10 +208,45 @@ const FLOW_STEPS = [
 
 const STATS = [
   { value: "247", label: "Active Sensors" },
-  { value: "3", label: "Flood Zones" },
+  { value: "12", label: "Flood Zones" },
   { value: "60s", label: "Update Interval" },
   { value: "98.4%", label: "Uptime" },
 ];
+
+const WMO_CODES: Record<number, { label: string; emoji: string }> = {
+  0: { label: "Clear Sky", emoji: "☀️" },
+  1: { label: "Mainly Clear", emoji: "🌤️" },
+  2: { label: "Partly Cloudy", emoji: "⛅" },
+  3: { label: "Overcast", emoji: "☁️" },
+  45: { label: "Foggy", emoji: "🌫️" },
+  48: { label: "Icy Fog", emoji: "🌫️" },
+  51: { label: "Light Drizzle", emoji: "🌦️" },
+  53: { label: "Drizzle", emoji: "🌦️" },
+  55: { label: "Heavy Drizzle", emoji: "🌧️" },
+  61: { label: "Slight Rain", emoji: "🌧️" },
+  63: { label: "Moderate Rain", emoji: "🌧️" },
+  65: { label: "Heavy Rain", emoji: "🌧️" },
+  71: { label: "Light Snow", emoji: "🌨️" },
+  73: { label: "Moderate Snow", emoji: "❄️" },
+  75: { label: "Heavy Snow", emoji: "❄️" },
+  77: { label: "Snow Grains", emoji: "🌨️" },
+  80: { label: "Slight Showers", emoji: "🌦️" },
+  81: { label: "Moderate Showers", emoji: "🌧️" },
+  82: { label: "Violent Showers", emoji: "⛈️" },
+  85: { label: "Snow Showers", emoji: "🌨️" },
+  86: { label: "Heavy Snow Showers", emoji: "❄️" },
+  95: { label: "Thunderstorm", emoji: "⛈️" },
+  96: { label: "Heavy Thunderstorm", emoji: "🌩️" },
+  99: { label: "Hail Thunderstorm", emoji: "🌩️" },
+};
+
+function getWeatherInfo(code: number): { label: string; emoji: string } {
+  return WMO_CODES[code] ?? { label: "Unknown", emoji: "🌡️" };
+}
+
+function isRainyCode(code: number): boolean {
+  return (code >= 51 && code <= 82) || (code >= 95 && code <= 99);
+}
 
 function computeRoute(
   from: SelectedLocation,
@@ -234,36 +259,41 @@ function computeRoute(
   const latDiff = Math.abs(from.coords[0] - to.coords[0]);
   const lngDiff = Math.abs(from.coords[1] - to.coords[1]);
   const distKm = Math.round((latDiff + lngDiff) * 111 * 10) / 10;
-  const timeMin = Math.round(distKm * 3.5 + 5);
+  const timeMin = Math.round(distKm * 2.5 + 5);
 
   let chosenSegs: RoadSegment[] = [];
   let safetyScore = 95;
   let warning: string | undefined;
 
-  const needsLower = from.coords[0] < 40.72 || to.coords[0] < 40.72;
-  const needsUpper = from.coords[0] > 40.76 || to.coords[0] > 40.76;
+  // Determine route based on latitude zones in India
+  const isNorth = from.coords[0] > 25 || to.coords[0] > 25;
+  const isSouth = from.coords[0] < 18 || to.coords[0] < 18;
+  const isCoastal =
+    from.coords[1] > 78 ||
+    to.coords[1] > 78 ||
+    from.coords[1] < 73 ||
+    to.coords[1] < 73;
 
-  if (needsLower && needsUpper) {
-    chosenSegs = [ROAD_SEGMENTS[6], ROAD_SEGMENTS[4]];
-    safetyScore = 78;
+  if (isNorth && isCoastal) {
+    chosenSegs = [ROAD_SEGMENTS[1], ROAD_SEGMENTS[4]];
+    safetyScore = 75;
     warning =
-      "Avoid FDR Drive — severe flooding reported. West Side Highway has minor delays.";
-  } else if (needsLower) {
-    chosenSegs = [ROAD_SEGMENTS[6], ROAD_SEGMENTS[7]];
-    safetyScore = 65;
-    warning =
-      "Shore Road and Atlantic Ave fully flooded. Use Verrazzano route.";
-  } else if (needsUpper) {
-    chosenSegs = [safeSegs[0], safeSegs[1] || safeSegs[0]];
-    safetyScore = 94;
+      "Avoid NH-48 — severe flooding reported. Use Ring Road via bypass.";
+  } else if (isSouth) {
+    chosenSegs = [safeSegs[1] || safeSegs[0], modSegs[1] || modSegs[0]];
+    safetyScore = 84;
+    warning = "Anna Salai has minor waterlogging. Allow extra 8-10 minutes.";
+  } else if (isCoastal) {
+    chosenSegs = [ROAD_SEGMENTS[8], ROAD_SEGMENTS[4]];
+    safetyScore = 68;
+    warning = "Marine Drive fully flooded. Use Western Express Highway route.";
   } else {
-    chosenSegs = [modSegs[0], safeSegs[0]];
-    safetyScore = 82;
-    warning = "Minor flooding on Queens Blvd. Allow extra 10 minutes.";
+    chosenSegs = [safeSegs[0], modSegs[0]];
+    safetyScore = 90;
   }
 
   if (safetyScore < 70) {
-    chosenSegs = [...chosenSegs, ...highSegs.slice(0, 1)];
+    chosenSegs = [...chosenSegs, highSegs[0]];
   }
 
   return {
@@ -297,6 +327,7 @@ function LocationSearchInput({
   onSelect,
   placeholder,
   ocidPrefix,
+  extraAction,
 }: {
   label: string;
   value: string;
@@ -304,6 +335,7 @@ function LocationSearchInput({
   onSelect: (loc: SelectedLocation) => void;
   placeholder: string;
   ocidPrefix: string;
+  extraAction?: React.ReactNode;
 }) {
   const [suggestions, setSuggestions] = useState<NominatimResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -324,7 +356,7 @@ function LocationSearchInput({
     setIsLoading(true);
     setNoResults(false);
     try {
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`;
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&countrycodes=in`;
       const res = await fetch(url, {
         headers: { "User-Agent": "FloodSafeNavigator/1.0" },
         signal: abortRef.current.signal,
@@ -370,9 +402,12 @@ function LocationSearchInput({
 
   return (
     <div className="space-y-1">
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-        {label}
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          {label}
+        </p>
+        {extraAction}
+      </div>
       <div className="relative">
         <div className="relative flex items-center">
           <Search className="absolute left-2.5 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
@@ -400,7 +435,7 @@ function LocationSearchInput({
             {noResults ? (
               <div className="px-3 py-2.5 text-xs text-muted-foreground flex items-center gap-2">
                 <MapPin className="w-3.5 h-3.5" />
-                No locations found
+                No locations found in India
               </div>
             ) : (
               <ul>
@@ -438,6 +473,44 @@ function LocationSearchInput({
   );
 }
 
+// --- Weather Card Component ---
+function WeatherCard({ weather }: { weather: WeatherData }) {
+  const info = getWeatherInfo(weather.weathercode);
+  const isRainy = isRainyCode(weather.weathercode);
+  return (
+    <div
+      className="rounded-xl px-3 py-2.5 shadow-lg text-white"
+      style={{ background: "rgba(15,79,90,0.93)", minWidth: "200px" }}
+      data-ocid="weather.card"
+    >
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="text-xl">{info.emoji}</span>
+        <div>
+          <p className="text-xs font-bold">{info.label}</p>
+          <p className="text-[10px] text-white/70">Current Weather</p>
+        </div>
+        <span className="ml-auto text-lg font-black">{weather.temp}°C</span>
+      </div>
+      <div className="flex gap-3 text-[10px] text-white/80">
+        <span className="flex items-center gap-1">
+          <Wind className="w-3 h-3" /> {weather.windspeed} km/h
+        </span>
+        <span className="flex items-center gap-1">
+          <Droplets className="w-3 h-3" /> {weather.humidity}% humidity
+        </span>
+      </div>
+      {isRainy && (
+        <div className="mt-2 flex items-center gap-1.5 bg-red-700/60 rounded-md px-2 py-1">
+          <AlertTriangle className="w-3 h-3 text-yellow-300" />
+          <p className="text-[10px] text-yellow-200 font-semibold">
+            Flood risk elevated — rain detected
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Main App ---
 export default function App() {
   const mapRef = useRef<L.Map | null>(null);
@@ -453,13 +526,79 @@ export default function App() {
   const [route, setRoute] = useState<RouteResult | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
   const [lastUpdate] = useState("Live — Updated 2 min ago");
+  const [isGeolocating, setIsGeolocating] = useState(false);
+  const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
+
+  // Fetch weather when fromLoc changes
+  useEffect(() => {
+    if (!fromLoc) return;
+    const [lat, lon] = fromLoc.coords;
+    fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=relativehumidity_2m,windspeed_10m&timezone=Asia%2FKolkata&forecast_days=1`,
+    )
+      .then((r) => r.json())
+      .then((data) => {
+        const cw = data.current_weather;
+        const humidity = data.hourly?.relativehumidity_2m?.[0] ?? 70;
+        setWeatherData({
+          temp: Math.round(cw.temperature),
+          windspeed: Math.round(cw.windspeed),
+          weathercode: cw.weathercode,
+          humidity,
+        });
+      })
+      .catch(() => {
+        // silently fail weather fetch
+      });
+  }, [fromLoc]);
+
+  function handleUseMyLocation() {
+    if (!navigator.geolocation) return;
+    setIsGeolocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lon } = pos.coords;
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+            { headers: { "User-Agent": "FloodSafeNavigator/1.0" } },
+          );
+          const data = await res.json();
+          const name = data.display_name
+            ? data.display_name.split(",").slice(0, 2).join(",").trim()
+            : `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+          const loc: SelectedLocation = { name, coords: [lat, lon] };
+          setFromLoc(loc);
+          setFromText(name);
+          if (mapRef.current) {
+            (mapRef.current as any).setView([lat, lon], 13);
+          }
+        } catch {
+          // use raw coords
+          const name = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+          const loc: SelectedLocation = { name, coords: [lat, lon] };
+          setFromLoc(loc);
+          setFromText(name);
+          if (mapRef.current) {
+            (mapRef.current as any).setView([lat, lon], 13);
+          }
+        } finally {
+          setIsGeolocating(false);
+        }
+      },
+      () => {
+        setIsGeolocating(false);
+      },
+      { timeout: 10000 },
+    );
+  }
 
   useEffect(() => {
     if (mapRef.current || !mapContainerRef.current) return;
 
     const map = L.map(mapContainerRef.current, {
-      center: [40.73, -73.935],
-      zoom: 11,
+      center: [20.5937, 78.9629],
+      zoom: 5,
       zoomControl: true,
     });
 
@@ -513,7 +652,7 @@ export default function App() {
       iconAnchor: [10, 10],
     });
 
-    for (const loc of NYC_LOCATIONS) {
+    for (const loc of INDIA_LOCATIONS) {
       L.marker(loc.coords, { icon: locIcon }).bindTooltip(loc.name).addTo(map);
     }
 
@@ -595,7 +734,7 @@ export default function App() {
                 FloodSafe Navigator
               </h1>
               <p className="text-xs text-white/70">
-                Real-time flood-aware routing
+                Real-time flood-aware routing — India
               </p>
             </div>
           </div>
@@ -605,7 +744,7 @@ export default function App() {
               <span>{lastUpdate}</span>
             </div>
             <Badge className="bg-white/20 text-white hover:bg-white/30 text-xs">
-              Worldwide
+              🇮🇳 India
             </Badge>
           </div>
         </div>
@@ -648,8 +787,25 @@ export default function App() {
                     setFromLoc(loc);
                     setFromText(loc.name);
                   }}
-                  placeholder="Search start location…"
+                  placeholder="Search start location in India…"
                   ocidPrefix="route_from"
+                  extraAction={
+                    <button
+                      type="button"
+                      onClick={handleUseMyLocation}
+                      disabled={isGeolocating}
+                      className="flex items-center gap-1 text-[10px] text-primary font-semibold hover:text-primary/80 transition-colors disabled:opacity-50"
+                      data-ocid="route_planner.toggle"
+                      title="Use my current location"
+                    >
+                      {isGeolocating ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <MapPin className="w-3 h-3" />
+                      )}
+                      Use My Location
+                    </button>
+                  }
                 />
 
                 <LocationSearchInput
@@ -663,7 +819,7 @@ export default function App() {
                     setToLoc(loc);
                     setToText(loc.name);
                   }}
-                  placeholder="Search destination…"
+                  placeholder="Search destination in India…"
                   ocidPrefix="route_to"
                 />
 
@@ -701,20 +857,24 @@ export default function App() {
                     className="pt-2 border-t border-border space-y-2"
                     data-ocid="route_planner.card"
                   >
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="bg-muted rounded-lg p-2 text-center">
-                        <Clock className="w-3.5 h-3.5 mx-auto mb-0.5 text-primary" />
-                        <div className="text-sm font-bold">
-                          {route.timeMin}m
-                        </div>
-                        <div className="text-[10px] text-muted-foreground">
-                          Time
-                        </div>
+                    {/* ETA — most prominent */}
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                      <div className="flex items-center justify-center gap-1.5 mb-0.5">
+                        <Clock className="w-4 h-4 text-green-700" />
+                        <span className="text-2xl font-black text-green-700">
+                          {route.timeMin} mins away
+                        </span>
                       </div>
+                      <p className="text-[11px] text-green-600 font-medium">
+                        Estimated travel time
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
                       <div className="bg-muted rounded-lg p-2 text-center">
                         <Ruler className="w-3.5 h-3.5 mx-auto mb-0.5 text-primary" />
                         <div className="text-sm font-bold">
-                          {route.distanceKm}km
+                          {route.distanceKm} km
                         </div>
                         <div className="text-[10px] text-muted-foreground">
                           Distance
@@ -726,7 +886,7 @@ export default function App() {
                           {route.safetyScore}%
                         </div>
                         <div className="text-[10px] text-muted-foreground">
-                          Safety
+                          Safety Score
                         </div>
                       </div>
                     </div>
@@ -790,23 +950,28 @@ export default function App() {
             </Card>
           </div>
 
-          {/* Flood alert */}
+          {/* Top-right: Weather + Flood alert */}
           <div
-            className="absolute top-4 right-4 z-[1000] max-w-xs"
-            data-ocid="flood_alert.card"
+            className="absolute top-4 right-4 z-[1000] flex flex-col gap-2"
+            style={{ maxWidth: "240px" }}
           >
+            {/* Flood alert */}
             <div
               className="flex items-start gap-2 rounded-xl px-3 py-2.5 shadow-lg text-white"
               style={{ background: "rgba(198,40,40,0.92)" }}
+              data-ocid="flood_alert.card"
             >
               <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
               <div>
-                <p className="text-xs font-bold">Active Flood Alert — NYC</p>
+                <p className="text-xs font-bold">Active Flood Alert — India</p>
                 <p className="text-[11px] text-white/80">
-                  Lower Manhattan & South Brooklyn: avoid coastal roads
+                  Multiple states: avoid low-lying coastal and riverside roads
                 </p>
               </div>
             </div>
+
+            {/* Weather widget */}
+            {weatherData && <WeatherCard weather={weatherData} />}
           </div>
         </div>
 
@@ -819,7 +984,8 @@ export default function App() {
               </h2>
               <p className="text-muted-foreground mt-1 text-sm max-w-xl mx-auto">
                 Real-time flood data from IoT cloud sensors powers color-coded
-                routing, helping you navigate safely through flood events.
+                routing, helping you navigate safely through flood events across
+                India.
               </p>
             </div>
 
@@ -827,7 +993,7 @@ export default function App() {
               <FeatureCard
                 icon={<Radio className="w-6 h-6" />}
                 title="IoT Sensor Network"
-                description="Water-level sensors placed on roads, bridges, and underpasses transmit live readings to the cloud every 60 seconds."
+                description="Water-level sensors placed on roads, bridges, and underpasses across India transmit live readings to the cloud every 60 seconds."
                 step="01"
               />
               <FeatureCard
@@ -901,7 +1067,7 @@ export default function App() {
           <div className="flex items-center gap-1">
             <Zap className="w-3 h-3" />
             <span>
-              FloodSafe Navigator — Sensor-powered flood routing worldwide
+              FloodSafe Navigator — Sensor-powered flood routing across India
             </span>
           </div>
           <span className="hidden sm:block opacity-40">·</span>
