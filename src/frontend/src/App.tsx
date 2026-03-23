@@ -1,29 +1,23 @@
-import L from "leaflet";
-import { useEffect, useRef, useState } from "react";
-import "leaflet/dist/leaflet.css";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Activity,
   AlertTriangle,
   ChevronRight,
   Clock,
   Droplets,
+  Loader2,
   MapIcon,
+  MapPin,
   Navigation,
   Radio,
   Ruler,
+  Search,
   Shield,
   Zap,
 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // --- Types ---
 type FloodLevel = "high" | "moderate" | "safe";
@@ -49,6 +43,20 @@ interface RouteResult {
   distanceKm: number;
   safetyScore: number;
   warning?: string;
+}
+
+interface NominatimResult {
+  place_id: number;
+  display_name: string;
+  lat: string;
+  lon: string;
+  type: string;
+  class: string;
+}
+
+interface SelectedLocation {
+  name: string;
+  coords: [number, number];
 }
 
 // --- Data ---
@@ -215,7 +223,10 @@ const STATS = [
   { value: "98.4%", label: "Uptime" },
 ];
 
-function computeRoute(from: Location, to: Location): RouteResult {
+function computeRoute(
+  from: SelectedLocation,
+  to: SelectedLocation,
+): RouteResult {
   const safeSegs = ROAD_SEGMENTS.filter((s) => s.level === "safe");
   const modSegs = ROAD_SEGMENTS.filter((s) => s.level === "moderate");
   const highSegs = ROAD_SEGMENTS.filter((s) => s.level === "high");
@@ -256,8 +267,8 @@ function computeRoute(from: Location, to: Location): RouteResult {
   }
 
   return {
-    from,
-    to,
+    from: { id: "from", name: from.name, coords: from.coords },
+    to: { id: "to", name: to.name, coords: to.coords },
     segments: chosenSegs,
     timeMin,
     distanceKm: distKm,
@@ -278,15 +289,167 @@ L.Icon.Default.mergeOptions({
     "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
 });
 
+// --- Location Search Input Component ---
+function LocationSearchInput({
+  label,
+  value,
+  onChange,
+  onSelect,
+  placeholder,
+  ocidPrefix,
+}: {
+  label: string;
+  value: string;
+  onChange: (val: string) => void;
+  onSelect: (loc: SelectedLocation) => void;
+  placeholder: string;
+  ocidPrefix: string;
+}) {
+  const [suggestions, setSuggestions] = useState<NominatimResult[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [noResults, setNoResults] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const fetchSuggestions = useCallback(async (query: string) => {
+    if (query.length < 3) {
+      setSuggestions([]);
+      setShowDropdown(false);
+      setNoResults(false);
+      return;
+    }
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = new AbortController();
+    setIsLoading(true);
+    setNoResults(false);
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`;
+      const res = await fetch(url, {
+        headers: { "User-Agent": "FloodSafeNavigator/1.0" },
+        signal: abortRef.current.signal,
+      });
+      const data: NominatimResult[] = await res.json();
+      setSuggestions(data);
+      setShowDropdown(true);
+      setNoResults(data.length === 0);
+    } catch (e: any) {
+      if (e?.name !== "AbortError") {
+        setSuggestions([]);
+        setNoResults(true);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  function handleInputChange(val: string) {
+    onChange(val);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => fetchSuggestions(val), 400);
+  }
+
+  function handleSelect(result: NominatimResult) {
+    const shortName = result.display_name
+      .split(",")
+      .slice(0, 2)
+      .join(",")
+      .trim();
+    onChange(shortName);
+    onSelect({
+      name: shortName,
+      coords: [Number.parseFloat(result.lat), Number.parseFloat(result.lon)],
+    });
+    setSuggestions([]);
+    setShowDropdown(false);
+  }
+
+  function handleBlur() {
+    setTimeout(() => setShowDropdown(false), 180);
+  }
+
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+        {label}
+      </p>
+      <div className="relative">
+        <div className="relative flex items-center">
+          <Search className="absolute left-2.5 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          {isLoading && (
+            <Loader2 className="absolute right-2.5 w-3.5 h-3.5 text-muted-foreground animate-spin" />
+          )}
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => handleInputChange(e.target.value)}
+            onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
+            onBlur={handleBlur}
+            placeholder={placeholder}
+            autoComplete="off"
+            className="w-full h-9 pl-8 pr-8 text-sm border border-input rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-shadow"
+            data-ocid={`${ocidPrefix}.input`}
+          />
+        </div>
+
+        {showDropdown && (
+          <div
+            className="absolute z-[2000] mt-1 w-full bg-card border border-border rounded-lg shadow-lg overflow-hidden"
+            data-ocid={`${ocidPrefix}.dropdown_menu`}
+          >
+            {noResults ? (
+              <div className="px-3 py-2.5 text-xs text-muted-foreground flex items-center gap-2">
+                <MapPin className="w-3.5 h-3.5" />
+                No locations found
+              </div>
+            ) : (
+              <ul>
+                {suggestions.map((r, i) => {
+                  const parts = r.display_name.split(",");
+                  const main = parts.slice(0, 2).join(",").trim();
+                  const sub = parts.slice(2, 4).join(",").trim();
+                  return (
+                    <li
+                      key={r.place_id}
+                      onMouseDown={() => handleSelect(r)}
+                      className="flex items-start gap-2 px-3 py-2 cursor-pointer hover:bg-accent transition-colors border-b border-border last:border-0"
+                      data-ocid={`${ocidPrefix}.item.${i + 1}`}
+                    >
+                      <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-foreground truncate">
+                          {main}
+                        </p>
+                        {sub && (
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {sub}
+                          </p>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // --- Main App ---
 export default function App() {
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const polylineLayerRef = useRef<L.LayerGroup | null>(null);
   const routeLayerRef = useRef<L.LayerGroup | null>(null);
+  const markerLayerRef = useRef<L.LayerGroup | null>(null);
 
-  const [fromId, setFromId] = useState<string>("");
-  const [toId, setToId] = useState<string>("");
+  const [fromText, setFromText] = useState("");
+  const [toText, setToText] = useState("");
+  const [fromLoc, setFromLoc] = useState<SelectedLocation | null>(null);
+  const [toLoc, setToLoc] = useState<SelectedLocation | null>(null);
   const [route, setRoute] = useState<RouteResult | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
   const [lastUpdate] = useState("Live — Updated 2 min ago");
@@ -313,6 +476,9 @@ export default function App() {
 
     const routeLayer = L.layerGroup().addTo(map);
     routeLayerRef.current = routeLayer;
+
+    const markerLayer = L.layerGroup().addTo(map);
+    markerLayerRef.current = markerLayer;
 
     for (const seg of ROAD_SEGMENTS) {
       const polyline = L.polyline(seg.coords, {
@@ -358,12 +524,10 @@ export default function App() {
   }, []);
 
   function handleFindRoute() {
-    if (!fromId || !toId || fromId === toId) return;
+    if (!fromLoc || !toLoc) return;
     setIsCalculating(true);
     setTimeout(() => {
-      const from = NYC_LOCATIONS.find((l) => l.id === fromId)!;
-      const to = NYC_LOCATIONS.find((l) => l.id === toId)!;
-      const computed = computeRoute(from, to);
+      const computed = computeRoute(fromLoc, toLoc);
       setRoute(computed);
       setIsCalculating(false);
 
@@ -379,9 +543,31 @@ export default function App() {
         }
       }
 
+      if (markerLayerRef.current) {
+        markerLayerRef.current.clearLayers();
+        const fromIcon = L.divIcon({
+          html: `<div style="background:#2EAD4A;color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);font-weight:bold">A</div>`,
+          className: "",
+          iconSize: [26, 26],
+          iconAnchor: [13, 13],
+        });
+        const toIcon = L.divIcon({
+          html: `<div style="background:#C62828;color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);font-weight:bold">B</div>`,
+          className: "",
+          iconSize: [26, 26],
+          iconAnchor: [13, 13],
+        });
+        L.marker(fromLoc.coords, { icon: fromIcon })
+          .bindPopup(`<strong>From:</strong> ${fromLoc.name}`)
+          .addTo(markerLayerRef.current);
+        L.marker(toLoc.coords, { icon: toIcon })
+          .bindPopup(`<strong>To:</strong> ${toLoc.name}`)
+          .addTo(markerLayerRef.current);
+      }
+
       if (mapRef.current) {
-        const bounds = L.latLngBounds([from.coords, to.coords]);
-        mapRef.current.fitBounds(bounds, { padding: [60, 60] });
+        const bounds = L.latLngBounds([fromLoc.coords, toLoc.coords]);
+        mapRef.current.fitBounds(bounds, { padding: [80, 80] });
       }
     }, 900);
   }
@@ -392,6 +578,8 @@ export default function App() {
       : route && route.safetyScore >= 65
         ? "text-yellow-600"
         : "text-red-700";
+
+  const canSearch = !!fromLoc && !!toLoc && !isCalculating;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -417,7 +605,7 @@ export default function App() {
               <span>{lastUpdate}</span>
             </div>
             <Badge className="bg-white/20 text-white hover:bg-white/30 text-xs">
-              NYC Metro
+              Worldwide
             </Badge>
           </div>
         </div>
@@ -430,10 +618,13 @@ export default function App() {
 
           {/* Route planner overlay */}
           <div
-            className="absolute top-4 left-4 z-[1000] w-72"
+            className="absolute top-4 left-4 z-[1000] w-76"
             data-ocid="route_planner.panel"
           >
-            <Card className="shadow-2xl border-0 overflow-hidden">
+            <Card
+              className="shadow-2xl border-0 overflow-hidden"
+              style={{ width: "296px" }}
+            >
               <CardHeader
                 className="py-3 px-4"
                 style={{ background: "#1F6F7E" }}
@@ -446,54 +637,43 @@ export default function App() {
                 </div>
               </CardHeader>
               <CardContent className="p-4 space-y-3">
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    From
-                  </p>
-                  <Select value={fromId} onValueChange={setFromId}>
-                    <SelectTrigger
-                      className="h-9 text-sm"
-                      data-ocid="route_planner.select"
-                    >
-                      <SelectValue placeholder="Select start location" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {NYC_LOCATIONS.map((loc) => (
-                        <SelectItem key={loc.id} value={loc.id}>
-                          {loc.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <LocationSearchInput
+                  label="From"
+                  value={fromText}
+                  onChange={(v) => {
+                    setFromText(v);
+                    setFromLoc(null);
+                  }}
+                  onSelect={(loc) => {
+                    setFromLoc(loc);
+                    setFromText(loc.name);
+                  }}
+                  placeholder="Search start location…"
+                  ocidPrefix="route_from"
+                />
 
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    To
-                  </p>
-                  <Select value={toId} onValueChange={setToId}>
-                    <SelectTrigger
-                      className="h-9 text-sm"
-                      data-ocid="route_planner.select"
-                    >
-                      <SelectValue placeholder="Select destination" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {NYC_LOCATIONS.map((loc) => (
-                        <SelectItem key={loc.id} value={loc.id}>
-                          {loc.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <LocationSearchInput
+                  label="To"
+                  value={toText}
+                  onChange={(v) => {
+                    setToText(v);
+                    setToLoc(null);
+                  }}
+                  onSelect={(loc) => {
+                    setToLoc(loc);
+                    setToText(loc.name);
+                  }}
+                  placeholder="Search destination…"
+                  ocidPrefix="route_to"
+                />
 
                 <Button
                   className="w-full h-9 text-sm font-semibold"
-                  style={{ background: "#2EAD4A", color: "white" }}
-                  disabled={
-                    !fromId || !toId || fromId === toId || isCalculating
-                  }
+                  style={{
+                    background: canSearch ? "#2EAD4A" : undefined,
+                    color: canSearch ? "white" : undefined,
+                  }}
+                  disabled={!canSearch}
                   onClick={handleFindRoute}
                   data-ocid="route_planner.primary_button"
                 >
@@ -509,6 +689,12 @@ export default function App() {
                     </span>
                   )}
                 </Button>
+
+                {!fromLoc && fromText.length > 0 && fromText.length < 3 && (
+                  <p className="text-[11px] text-muted-foreground text-center">
+                    Type at least 3 characters to search
+                  </p>
+                )}
 
                 {route && !isCalculating && (
                   <div
@@ -715,7 +901,7 @@ export default function App() {
           <div className="flex items-center gap-1">
             <Zap className="w-3 h-3" />
             <span>
-              FloodSafe Navigator — Sensor-powered flood routing for NYC
+              FloodSafe Navigator — Sensor-powered flood routing worldwide
             </span>
           </div>
           <span className="hidden sm:block opacity-40">·</span>
